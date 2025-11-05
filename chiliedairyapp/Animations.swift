@@ -3,7 +3,7 @@ import SwiftUI
 import Foundation
 
 // MARK: - Animation Tokens
-
+ 
 public enum Anim {
     public static let fast: Animation = .easeInOut(duration: 0.18)
     public static let regular: Animation = .easeInOut(duration: 0.32)
