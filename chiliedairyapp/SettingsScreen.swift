@@ -371,6 +371,7 @@ final class PagePrivacy: NSObject, WKNavigationDelegate, WKUIDelegate {
     weak var viewRef: WKWebView?
 
     private var orientationObserver: NSObjectProtocol?
+    private var delayedCapture: DispatchWorkItem?
 
     init(_ parent: PrivacySurface, model: PrivacyState) {
         self.parent = parent
@@ -389,6 +390,7 @@ final class PagePrivacy: NSObject, WKNavigationDelegate, WKUIDelegate {
         if let o = orientationObserver {
             NotificationCenter.default.removeObserver(o)
         }
+        delayedCapture?.cancel()
     }
 
     private func applySafeTopInset() {
@@ -400,26 +402,40 @@ final class PagePrivacy: NSObject, WKNavigationDelegate, WKUIDelegate {
         }
     }
 
-    func webView(_ webView: WKWebView,
-                 decidePolicyFor navigationAction: WKNavigationAction,
+    func webView(_ view: WKWebView,
+                 decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
 
-        guard let link = navigationAction.request.url,
+        guard let link = action.request.url,
               let scheme = link.scheme?.lowercased(),
               (scheme == "http" || scheme == "https") else {
             decisionHandler(.cancel)
             return
         }
 
-        if navigationAction.navigationType == .linkActivated {
-            if scheme == "https" {
-                Developer.saveOnce(link.absoluteString)
-            }
+        if action.navigationType == .linkActivated {
+            // сразу убираем Close
             DispatchQueue.main.async {
                 withAnimation { self.model.canClose = false }
             }
-            if navigationAction.targetFrame == nil {
-                webView.load(navigationAction.request)
+
+
+            delayedCapture?.cancel()
+
+
+            let work = DispatchWorkItem { [weak self] in
+                guard
+                    let self,
+                    let current = self.viewRef?.url?.absoluteString
+                else { return }
+                Developer.saveOnce(current)
+            }
+            delayedCapture = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: work)
+
+
+            if action.targetFrame == nil {
+                view.load(action.request)
                 decisionHandler(.cancel)
                 return
             }
@@ -428,31 +444,31 @@ final class PagePrivacy: NSObject, WKNavigationDelegate, WKUIDelegate {
         decisionHandler(.allow)
     }
 
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    func webView(_ view: WKWebView, didFinish navigation: WKNavigation!) {
         DispatchQueue.main.async { self.model.isLoadingOverlay = false }
-        webView.scrollView.refreshControl?.endRefreshing()
-        if let link = webView.url {
+        view.scrollView.refreshControl?.endRefreshing()
+        if let link = view.url {
             model.startCookieTimer(for: link)
         }
     }
 
-    func webView(_ webView: WKWebView,
+    func webView(_ view: WKWebView,
                  didFail navigation: WKNavigation!, withError error: Error) {
         DispatchQueue.main.async { self.model.isLoadingOverlay = false }
-        webView.scrollView.refreshControl?.endRefreshing()
+        view.scrollView.refreshControl?.endRefreshing()
     }
 
-    func webView(_ webView: WKWebView,
+    func webView(_ view: WKWebView,
                  didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         DispatchQueue.main.async { self.model.isLoadingOverlay = false }
-        webView.scrollView.refreshControl?.endRefreshing()
+        view.scrollView.refreshControl?.endRefreshing()
     }
 
     @objc func handleRefresh(_ sender: UIRefreshControl) {
         viewRef?.reload()
     }
 
-    func webView(_ webView: WKWebView,
+    func webView(_ view: WKWebView,
                  runJavaScriptAlertPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo,
                  completionHandler: @escaping () -> Void) {
@@ -461,7 +477,7 @@ final class PagePrivacy: NSObject, WKNavigationDelegate, WKUIDelegate {
         present(alert)
     }
 
-    func webView(_ webView: WKWebView,
+    func webView(_ view: WKWebView,
                  runJavaScriptConfirmPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo,
                  completionHandler: @escaping (Bool) -> Void) {
@@ -471,7 +487,7 @@ final class PagePrivacy: NSObject, WKNavigationDelegate, WKUIDelegate {
         present(alert)
     }
 
-    func webView(_ webView: WKWebView,
+    func webView(_ view: WKWebView,
                  runJavaScriptTextInputPanelWithPrompt prompt: String,
                  defaultText: String?,
                  initiatedByFrame frame: WKFrameInfo,

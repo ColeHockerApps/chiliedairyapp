@@ -249,7 +249,7 @@ public struct HabitsScreen: View {
             }
         }
     }
-
+ 
     private func row(_ s: SnackEvent) -> some View {
         Button {
             editing = s

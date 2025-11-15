@@ -10,7 +10,7 @@ public final class HabitsViewModel: ObservableObject {
 
     // Date scope
     @Published public var selectedDate: Date
-
+ 
     // Output
     @Published public private(set) var snacksForDay: [SnackEvent] = []
     @Published public private(set) var avgHungerForDay: Double = 0
